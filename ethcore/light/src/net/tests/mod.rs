@@ -113,68 +113,100 @@ impl Provider for TestProvider {
 		None
 	}
 
-	fn block_header(&self, id: BlockId) -> encoded::Header {
+	fn block_header(&self, id: BlockId) -> Result<encoded::Header, encoded::Header> {
 		self.0.client.block_header(id)
 	}
 
-	fn transaction_index(&self, req: request::CompleteTransactionIndexRequest)
-		-> request::TransactionIndexResponse
-	{
-		request::TransactionIndexResponse {
+	fn transaction_index(
+		&self,
+		req: request::CompleteTransactionIndexRequest
+	) -> Result<request::TransactionIndexResponse,request::TransactionIndexResponse> {
+		use ethcore::ids::TransactionId;
+
+		Ok(request::TransactionIndexResponse {
 			inner: Some(TransactionIndexResponseInner {
 					num: 100,
 					hash: req.hash,
 					index: 55,
 			}),
-		}
+		})
 	}
 
-	fn block_body(&self, req: request::CompleteBodyRequest) -> request::BodyResponse {
+	fn block_body(
+		&self,
+		req: request::CompleteBodyRequest
+	) -> Result<request::BodyResponse, request::BodyResponse> {
 		self.0.client.block_body(req)
 	}
 
-	fn block_receipts(&self, req: request::CompleteReceiptsRequest) -> request::ReceiptsResponse {
+	fn block_receipts(
+		&self, req:
+		request::CompleteReceiptsRequest
+	) -> Result<request::ReceiptsResponse, request::ReceiptsResponse> {
 		self.0.client.block_receipts(req)
 	}
 
-	fn account_proof(&self, req: request::CompleteAccountRequest) -> request::AccountResponse {
+	fn account_proof(
+		&self,
+		req: request::CompleteAccountRequest
+	) -> Result<request::AccountResponse, request::AccountResponse> {
 		// sort of a leaf node
 		let mut stream = RlpStream::new_list(2);
 		stream.append(&req.address_hash).append_empty_data();
-		AccountResponse {
+		Ok(AccountResponse {
 			proof: vec![stream.out()],
 			balance: 10.into(),
 			nonce: 100.into(),
 			code_hash: Default::default(),
 			storage_root: Default::default(),
-		}
+		})
 	}
 
-	fn storage_proof(&self, req: request::CompleteStorageRequest) -> request::StorageResponse {
-		StorageResponse {
+	fn storage_proof(
+		&self,
+		req: request::CompleteStorageRequest
+	) -> Result<request::StorageResponse, request::StorageResponse> {
+		Ok(StorageResponse {
 			proof: vec![::rlp::encode(&req.key_hash)],
 			value: req.key_hash | req.address_hash,
-		}
+		})
 	}
 
-	fn contract_code(&self, req: request::CompleteCodeRequest) -> request::CodeResponse {
-		CodeResponse {
-			code: req.block_hash.iter().chain(req.code_hash.iter()).cloned().collect(),
-		}
+	fn contract_code(
+		&self,
+		req: request::CompleteCodeRequest
+	) -> Result<request::CodeResponse, request::CodeResponse> {
+		Ok(CodeResponse {
+			code: req
+				.block_hash
+				.iter()
+				.chain(req.code_hash.iter())
+				.cloned()
+				.collect(),
+		})
 	}
 
-	fn header_proof(&self, _req: request::CompleteHeaderProofRequest) -> request::HeaderProofResponse {
-		HeaderProofResponse::empty()
+	fn header_proof(
+		&self,
+		_req: request::CompleteHeaderProofRequest
+	) -> Result<request::HeaderProofResponse, request::HeaderProofResponse> {
+		Err(request::HeaderProofResponse::empty())
 	}
 
-	fn transaction_proof(&self, _req: request::CompleteExecutionRequest) -> request::ExecutionResponse {
-		ExecutionResponse::empty()
+	fn transaction_proof(
+		&self,
+		_req: request::CompleteExecutionRequest
+	) -> Result<request::ExecutionResponse, request::ExecutionResponse> {
+		Err(request::ExecutionResponse::empty())
 	}
 
-	fn epoch_signal(&self, _req: request::CompleteSignalRequest) -> request::SignalResponse {
-		request::SignalResponse {
+	fn epoch_signal(
+		&self,
+		_req: request::CompleteSignalRequest
+	) -> Result<request::SignalResponse, request::SignalResponse> {
+		Ok(request::SignalResponse {
 			signal: vec![1, 2, 3, 4],
-		}
+		})
 	}
 
 	fn transactions_to_propagate(&self) -> Vec<PendingTransaction> {
@@ -340,7 +372,7 @@ fn get_block_headers() {
 	let request_body = make_packet(req_id, &requests);
 
 	let response = {
-		let headers: Vec<_> = (0..10).map(|i| provider.client.block_header(BlockId::Number(i + 1))).collect();
+		let headers: Vec<_> = (0..10).map(|i| provider.client.block_header(BlockId::Number(i + 1)).unwrap()).collect();
 		assert_eq!(headers.len(), 10);
 
 		let new_creds = *flow_params.limit() - flow_params.compute_cost_multi(requests.requests()).unwrap();
@@ -382,13 +414,13 @@ fn get_block_bodies() {
 	let mut bodies = Vec::new();
 
 	for i in 0..10 {
-		let hash = provider.client.block_header(BlockId::Number(i)).hash();
+		let hash = provider.client.block_header(BlockId::Number(i)).unwrap().hash();
 		builder.push(Request::Body(IncompleteBodyRequest {
 			hash: hash.into(),
 		})).unwrap();
 		bodies.push(Response::Body(provider.client.block_body(CompleteBodyRequest {
 			hash: hash,
-		})));
+		}).unwrap()));
 	}
 	let req_id = 111;
 	let requests = builder.build();
@@ -429,7 +461,7 @@ fn get_block_receipts() {
 	// find the first 10 block hashes starting with `f` because receipts are only provided
 	// by the test client in that case.
 	let block_hashes: Vec<H256> = (0..1000)
-		.map(|i| provider.client.block_header(BlockId::Number(i)).hash())
+		.map(|i| provider.client.block_header(BlockId::Number(i)).unwrap().hash())
 		.filter(|hash| format!("{}", hash).starts_with("0xf"))
 		.take(10)
 		.collect();
@@ -440,7 +472,7 @@ fn get_block_receipts() {
 		builder.push(Request::Receipts(IncompleteReceiptsRequest { hash: hash.into() })).unwrap();
 		receipts.push(Response::Receipts(provider.client.block_receipts(CompleteReceiptsRequest {
 			hash: hash
-		})));
+		}).unwrap()));
 	}
 
 	let req_id = 111;
@@ -501,12 +533,12 @@ fn get_state_proofs() {
 			Response::Account(provider.account_proof(CompleteAccountRequest {
 				block_hash: H256::default(),
 				address_hash: key1,
-			})),
+			}).unwrap()),
 			Response::Storage(provider.storage_proof(CompleteStorageRequest {
 				block_hash: H256::default(),
 				address_hash: key1,
 				key_hash: key2,
-			})),
+			}).unwrap()),
 		];
 
 		let new_creds = *flow_params.limit() - flow_params.compute_cost_multi(requests.requests()).unwrap();

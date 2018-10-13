@@ -41,6 +41,8 @@ use self::error::Punishment;
 use self::load_timer::{LoadDistribution, NullStore};
 use self::request_set::RequestSet;
 use self::id_guard::IdGuard;
+use request;
+
 
 mod context;
 mod error;
@@ -957,17 +959,18 @@ impl LightProtocol {
 		// respond to all requests until one fails.
 		let responses = requests.respond_to_all(|complete_req| {
 			let _timer = self.load_distribution.begin_timer(&complete_req);
+			// FIXME: ugly workaround with unwrap_or
 			match complete_req {
-				CompleteRequest::Headers(req) => Some(Response::Headers(self.provider.block_headers(req))),
-				CompleteRequest::HeaderProof(req) => Some(Response::HeaderProof(self.provider.header_proof(req))),
-				CompleteRequest::TransactionIndex(req) => Some(Response::TransactionIndex(self.provider.transaction_index(req))),
-				CompleteRequest::Body(req) => Some(Response::Body(self.provider.block_body(req))),
-				CompleteRequest::Receipts(req) => Some(Response::Receipts(self.provider.block_receipts(req))),
-				CompleteRequest::Account(req) => Some(Response::Account(self.provider.account_proof(req))),
-				CompleteRequest::Storage(req) => Some(Response::Storage(self.provider.storage_proof(req))),
-				CompleteRequest::Code(req) => Some(Response::Code(self.provider.contract_code(req))),
-				CompleteRequest::Execution(req) => Some(Response::Execution(self.provider.transaction_proof(req))),
-				CompleteRequest::Signal(req) => Some(Response::Signal(self.provider.epoch_signal(req))),
+				CompleteRequest::Headers(req) => Some(Response::Headers(self.provider.block_headers(req).ok().unwrap_or(request::HeadersResponse::empty()))),
+				CompleteRequest::HeaderProof(req) => Some(Response::HeaderProof(self.provider.header_proof(req).ok().unwrap_or(request::HeaderProofResponse::empty()))),
+				CompleteRequest::TransactionIndex(req) => Some(Response::TransactionIndex(self.provider.transaction_index(req).unwrap_or(request::TransactionIndexResponse::empty()))),
+				CompleteRequest::Body(req) => Some(Response::Body(self.provider.block_body(req).unwrap_or(request::BodyResponse::empty()))),
+				CompleteRequest::Receipts(req) => Some(Response::Receipts(self.provider.block_receipts(req).unwrap_or(request::ReceiptsResponse::empty()))),
+				CompleteRequest::Account(req) => Some(Response::Account(self.provider.account_proof(req).unwrap_or(request::AccountResponse::empty()))),
+				CompleteRequest::Storage(req) => Some(Response::Storage(self.provider.storage_proof(req).unwrap_or(request::StorageResponse::empty()))),
+				CompleteRequest::Code(req) => Some(Response::Code(self.provider.contract_code(req).unwrap_or(request::CodeResponse::empty()))),
+				CompleteRequest::Execution(req) => Some(Response::Execution(self.provider.transaction_proof(req).unwrap_or(request::ExecutionResponse::empty()))),
+				CompleteRequest::Signal(req) => Some(Response::Signal(self.provider.epoch_signal(req).unwrap_or(request::SignalResponse::empty()))),
 			}
 		});
 
