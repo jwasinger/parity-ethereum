@@ -401,9 +401,11 @@ impl<'x> OpenBlock<'x> {
 		}));
 		s.block.header.set_gas_used(s.block.receipts.last().map_or_else(U256::zero, |r| r.gas_used));
 
-        if let Some(extra_data) = s.engine.close_block_extra_data(&s.block.header) {
-          s.block.header.set_extra_data(extra_data);
-        }
+		if let Some(extra_data) = s.engine.close_block_extra_data(&s.block.header) {
+			s.block.header.set_extra_data(extra_data);
+		}
+
+        b.block.header.set_author(engine.executive_author(&header));
 
 		Ok(LockedBlock {
 			block: s.block,
@@ -557,7 +559,7 @@ fn enact(
 		db,
 		parent,
 		last_hashes,
-		engine.executive_author(&header), // Engine such as Clique will calculate author from extra_data.
+		Address::new(),
 		(*header.gas_limit(), *header.gas_limit()),
 		header.extra_data().clone(),
 		is_epoch_begin,
@@ -567,14 +569,8 @@ fn enact(
 	// We must set timestamp here
 	b.block.header.set_timestamp(header.timestamp());
 	b.block.header.set_difficulty(*header.difficulty());
-//	{
-//		if ::log::max_level() >= ::log::Level::Trace {
-//			let env = b.env_info();
-//			let s = State::from_existing(db.boxed_clone(), parent.state_root().clone(), engine.account_start_nonce(parent.number() + 1), factories.clone())?;
-//			trace!(target: "enact", "num={}, root={}, author={}, author_balance={}\n",
-//				   b.block.header.number(), s.root(), env.author, s.balance(&env.author)?);
-//		}
-//	}
+
+	b.block.header.set_author(*header.author());
 
 	b.push_transactions(transactions)?;
 
